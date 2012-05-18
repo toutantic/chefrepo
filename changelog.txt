@@ -1,0 +1,4 @@
+18/05/2012	1.0.0
+----------
+- version initiale
+- Examples
