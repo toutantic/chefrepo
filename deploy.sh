@@ -3,6 +3,7 @@
 # Usage: ./deploy.sh user@host [attributeFile]
 
 host=$1
+attributeFile="${2:attributs}"
 
 CHEF_REPO_DIR="chefrepo"
 
@@ -19,7 +20,7 @@ tar xj"
 #copy the local chef repo to the remote host
 tar cj . | ssh -o 'StrictHostKeyChecking no' $host "$deployChefRepo"
 
-runChefSolo="cd ~/$CHEF_REPO_DIR && sudo ./run.sh"
+runChefSolo="cd ~/$CHEF_REPO_DIR && sudo ./run.sh $attributeFile"
 # -t is needed to allocate a terminal an be able to use sudo
 # run chef solo on the remote host
 ssh -t -o 'StrictHostKeyChecking no' $host "$runChefSolo"
