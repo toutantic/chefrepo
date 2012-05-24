@@ -1,0 +1,349 @@
+#!/bin/bash
+
+#
+# Linux init script for tomcat
+# chkconfig: 2345 96 14
+# processname: tomcat
+# config: /etc/tomcat/tomcat.conf
+#
+# ----------------------------------------------------------------------
+#
+
+# Source function library.
+if [ -x /etc/rc.d/init.d/functions ]; then
+    . /etc/rc.d/init.d/functions
+fi
+
+READLINK="`which readlink`"
+BASENAME="`which basename`"
+DIRNAME="`which dirname`"
+
+LINK="`$READLINK -f $0`"
+TCAT_ENV="<%= @configFile %>"
+
+# The name of this program.
+SERVICE_NAME="`$BASENAME $0`"
+
+# Source the app config file, if it exists (console users can modify this).
+[ -r "$TCAT_ENV" ] && . "${TCAT_ENV}"
+
+# The path to the Tomcat start/stop script.
+TOMCAT_SCRIPT=$CATALINA_HOME/bin/catalina.sh
+
+
+# If TOMCAT_USER is not set, use "connect".
+if [ -z "$TOMCAT_USER" ]; then
+    TOMCAT_USER="tomcat"
+fi
+
+# Since the daemon function will run $TOMCAT_SCRIPT, no environment
+# settings should be defined here anymore.  Please use the
+# /data/tomcat.conf file instead.
+
+let RETVAL=0
+JVM_PID="0"
+JVM_RUNNING="false"
+
+start() {
+    echo -n "Starting $SERVICE_NAME: "
+
+    checkJvmRunning
+    if [ "$JVM_RUNNING" == "true" ]; then
+        echo -n "\"$SERVICE_NAME\" JVM process already running. "
+    else
+        # Raise the process's maximum number of file descriptors to 8192.
+        if [ "${UID}" == "0" ]; then
+            # Raise the process's maximum number of file descriptors to 8192.
+            ulimit -n 8192 || :
+        fi
+
+        # Exit with an explanation if our JAVA_HOME isn't found.
+        if [ ! -d "$JAVA_HOME" ] && [ ! -d "$JRE_HOME" ]; then
+            echo "JAVA_HOME of $JAVA_HOME not found."
+            echo "See ${TCAT_ENV}"
+            if [ -x /etc/rc.d/init.d/functions ]; then
+                echo -n "Starting $SERVICE_NAME: "
+                echo_failure
+                echo
+            fi
+            return 1
+        fi
+
+        # Set JSSE_HOME -- it fixes some security issues.
+        JSSE_HOME="$JAVA_HOME"
+        if [ "$JSSE_HOME" == "" ]; then
+            JSSE_HOME="$JRE_HOME"
+        fi
+        if [ -d "$JAVA_HOME/jre" ] && [ -r "$JAVA_HOME/jre" ]; then
+            JSSE_HOME="$JAVA_HOME/jre"
+        fi
+
+        # Start Tomcat, running as the $TOMCAT_USER.
+        if [ "$EUID" != "0" ]; then
+            # We're already a non-root user so just exec the script.
+            bash -c "set -a; \
+                SERVICE_NAME=$SERVICE_NAME; . $TCAT_ENV; \
+                JSSE_HOME=\"$JSSE_HOME\" \
+                cd $CATALINA_BASE; $TOMCAT_SCRIPT start" 
+        else
+            if [ -x /etc/rc.d/init.d/functions -a -x /sbin/runuser ]; then
+                runuser -s /bin/bash - $TOMCAT_USER \
+                    -c "set -a; \
+                    SERVICE_NAME=$SERVICE_NAME; . $TCAT_ENV; \
+                    JSSE_HOME=\"$JSSE_HOME\" \
+                    cd $CATALINA_BASE; $TOMCAT_SCRIPT start"
+            else
+                su $TOMCAT_USER -s /bin/bash -c "set -a; \
+                    SERVICE_NAME=$SERVICE_NAME; . $TCAT_ENV; \
+                    JSSE_HOME=\"$JSSE_HOME\" \
+                    cd $CATALINA_BASE; $TOMCAT_SCRIPT start"
+            fi
+        fi
+
+        let RETVAL=$?
+
+        # If the return value is zero, then the attempt to start it is
+        # good so far.
+        if [ $RETVAL -eq 0 ]; then
+            # Sleep some seconds while Tomcat begins to start, then check it.
+            sleep 7
+            checkJvmRunning
+            if [ "$JVM_RUNNING" == "false" ]; then
+                let RETVAL=1
+            fi
+        fi
+    fi
+
+    # Output "[  OK  ]" or "[  FAILED  ]"
+    if [ $RETVAL -eq 0 ]; then
+        if [ -x /etc/rc.d/init.d/functions ]; then
+            echo_success
+            echo
+        else
+            echo "[  OK  ]"
+        fi
+    else
+        if [ -x /etc/rc.d/init.d/functions ]; then
+            echo_failure
+            echo
+        else
+            echo "[  FAILED  ]"
+        fi
+    fi
+
+    return $RETVAL
+}
+
+stop() {
+    echo -n "Stopping $SERVICE_NAME: "
+
+    checkJvmRunning
+    if [ "$JVM_RUNNING" == "true" ]; then
+
+        # Exit with an explanation if our JAVA_HOME isn't found.
+        if [ ! -d "$JAVA_HOME" ] && [ ! -d "$JRE_HOME" ]; then
+            echo "JAVA_HOME of $JAVA_HOME not found."
+            echo "See ${TCAT_ENV}"
+            echo -n "Stopping $SERVICE_NAME: "
+            if [ -x /etc/rc.d/init.d/functions ]; then
+                echo_failure
+                echo
+            else
+                echo "[  FAILED  ]"
+            fi
+            return 1
+        fi
+
+        # Stop Tomcat, running as the $TOMCAT_USER.  We also unset any
+        # JVM memory switches -- the stop client shouldn't start with those.
+        if [ "$EUID" != "0" ]; then
+            # We're already a non-root user so just exec the script.
+            bash -c "set -a; \
+                SERVICE_NAME=$SERVICE_NAME; . $TCAT_ENV; \
+                shopt -s extglob; \
+                export JAVA_OPTS=\"\${JAVA_OPTS//-Xm[sx]+([0-9])[mM]}\"; \
+                shopt -u extglob; $TOMCAT_SCRIPT stop"
+        else
+            if [ -x /etc/rc.d/init.d/functions -a -x /sbin/runuser ]; then
+                runuser -s /bin/bash - $TOMCAT_USER \
+                    -c "set -a; \
+                    SERVICE_NAME=$SERVICE_NAME; . $TCAT_ENV; \
+                    shopt -s extglob; \
+                    export JAVA_OPTS=\"\${JAVA_OPTS//-Xm[sx]+([0-9])[mM]}\"; \
+                    shopt -u extglob; $TOMCAT_SCRIPT stop"
+            else
+                su $TOMCAT_USER -s /bin/bash -c \
+                    "set -a; \
+                    SERVICE_NAME=$SERVICE_NAME; . $TCAT_ENV; \
+                    shopt -s extglob; \
+                    export JAVA_OPTS=\"\${JAVA_OPTS//-Xm[sx]+([0-9])[mM]}\"; \
+                    shopt -u extglob; $TOMCAT_SCRIPT stop"
+            fi
+        fi
+
+        let RETVAL=$?
+
+        if [ $RETVAL -eq 0 ]; then
+
+            checkJvmRunning
+            if [ "$JVM_RUNNING" == "true" ]; then
+                if [ ! $SHUTDOWN_WAIT ]; then
+                    let SHUTDOWN_WAIT=5;
+                fi
+
+                # Loop here until either Tomcat shuts down on its own, or
+                # until we've waited longer than SHUTDOWN_WAIT seconds.
+                let count=0
+                until [ "`ps --pid $JVM_PID | grep -c $JVM_PID`" == "0" ] ||
+                      [ $count -gt $SHUTDOWN_WAIT ]
+                do
+                    if [ $count -eq 0 ]; then
+                        echo
+                    fi
+                    echo "Waiting for processes to exit.."
+                    sleep 1
+                    let count=$count+1
+                done
+
+                if [ $count -gt $SHUTDOWN_WAIT ]; then
+                    # Tomcat is still running, so we'll send the JVM a
+                    # SIGTERM signal and wait again.
+                    echo "Sending the Tomcat processes a SIGTERM asking them" \
+                         "to shut down gracefully.."
+                    /bin/kill -s SIGTERM $JVM_PID
+
+                    # Loop here until either Tomcat shuts down on its own, or
+                    # until we've waited longer than SHUTDOWN_WAIT seconds.
+                    let count=0
+                    until [ "`ps --pid $JVM_PID | grep -c $JVM_PID`" \
+                          == "0" ] || [ $count -gt $SHUTDOWN_WAIT ]
+                    do
+                        echo "Waiting for processes to exit.."
+                        sleep 1
+                        let count=$count+1
+                    done
+
+                    if [ $count -gt $SHUTDOWN_WAIT ]; then
+                        # Tomcat is still running, and just won't shut down.
+                        # We'll kill the JVM process by sending it a SIGKILL
+                        # signal and wait again for the JVM process to die.
+                        echo "Killing processes which didn't stop after" \
+                         "$SHUTDOWN_WAIT seconds."
+                        /bin/kill -s SIGKILL $JVM_PID
+
+                        # Loop here until either Tomcat shuts down on its own,
+                        # or until we've waited longer than SHUTDOWN_WAIT
+                        # seconds.
+                        let count=0
+                        until [ "`ps --pid $JVM_PID | grep -c $JVM_PID`" \
+                              == "0" ] || [ $count -gt $SHUTDOWN_WAIT ]
+                        do
+                            echo "Waiting for processes to exit.."
+                            sleep 1
+                            let count=$count+1
+                        done
+
+                        if [ $count -gt $SHUTDOWN_WAIT ]; then
+                            # The JVM process won't shut down even with a
+                            # SIGKILL, so there is something really wrong.
+                            echo "The \"$SERVICE_NAME\" JVM process is wedged and" \
+                                "won't shut down even when it is"
+                            echo "sent a SIGKILL."
+                            echo "Process ID $JVM_PID."
+
+                            # Right here we may want to email an administrator.
+
+                            let RETVAL=1
+                        fi
+                    fi
+
+                    # We need to sleep here to make sure the JVM process dies.
+                    sleep 2
+                fi
+            fi
+        fi
+    fi
+
+    # Output "[  OK  ]" or "[  FAILED  ]"
+    if [ $RETVAL -eq 0 ]; then
+        if [ -x /etc/rc.d/init.d/functions ]; then
+            echo_success
+            echo
+        else
+            echo "[  OK  ]"
+        fi
+    else
+        if [ -x /etc/rc.d/init.d/functions ]; then
+            echo_failure
+            echo
+        else
+            echo "[  FAILED  ]"
+        fi
+    fi
+
+    return $RETVAL
+}
+
+getJvmPid() {
+        JVM_PID="`ps awwx | grep \"Dcatalina.base=$CATALINA_BASE \" | \
+            grep -v grep | head -n 1 | cut -c -5`"
+
+}
+
+checkJvmRunning() {
+    getJvmPid
+    if [ "$JVM_PID" != "" ]; then
+        JVM_RUNNING="true"
+    else
+        JVM_RUNNING="false"
+    fi
+}
+
+# See how we were called.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        if [ $RETVAL -eq 0 ]; then
+            start
+        fi
+        ;;
+    status)
+        checkJvmRunning
+        if [ "$JVM_RUNNING" == "true" ]; then
+            echo "$SERVICE_NAME (pid $JVM_PID) is running."
+            let RETVAL=0
+        else
+            echo "$SERVICE_NAME is not running."
+            let RETVAL=1
+        fi
+        exit $RETVAL
+        ;;
+    condrestart)
+        # If it's already running, restart it, otherwise don't start it.
+        checkJvmRunning
+        if [ "$JVM_RUNNING" == "true" ]; then
+            stop
+            if [ $RETVAL -eq 0 ]; then
+                start
+            fi
+        fi
+        ;;
+    restartlegacy)
+        let LEGACY=1
+        stop
+        let LEGACY=0
+        start
+        ;;
+    *)
+        echo "Usage: $SERVICE_NAME {start|stop|restart|status|condrestart}"
+        let RETVAL=1
+        exit $RETVAL
+esac
+
+exit $RETVAL
