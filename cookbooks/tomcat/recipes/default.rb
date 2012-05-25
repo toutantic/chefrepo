@@ -106,8 +106,11 @@ template "/etc/init.d/tomcat" do
 	)
 end
 
-
 service "tomcat" do
+  case node[:platform]
+  when "linuxmint"
+      provider Chef::Provider::Service::Init::Debian
+  end
   supports :restart => true, :start => true, :stop => true, :reload => true
   action [ :enable]
 end

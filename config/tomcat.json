@@ -1,1 +1,1 @@
-{ "run_list": [	"recipe[tomcat]"] }
+{ "recipes": [	"tomcat"] }
