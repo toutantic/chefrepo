@@ -11,7 +11,8 @@ attributeFile=$1
 
 # Are we on a vanilla system?
 if ! test -f "$chef_binary"; then
-	./install.sh
+	echo "OK"
+	sudo ./install.sh
 fi
 
 sudo chef-solo -c config/solo.rb -j config/$attributeFile.json
