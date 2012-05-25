@@ -1,16 +1,18 @@
 include_recipe "java"
 
-catalinaHome = node['tomcat']['catalinaHome']
-catalinaBase = node['tomcat']['catalinaBase']
+catalinaHome = node.tomcat.catalinaHome
 installDir = catalinaHome[0,catalinaHome.rindex('/')]
+
+catalinaBase = node['tomcat']['catalinaBase']
 configFile = catalinaBase[0,catalinaBase.rindex('/')]+"/tomcat.conf"
-version = node['tomcat']['version']
-user = node['tomcat']['user']
-uid = node['tomcat']['uid']
-group = node['tomcat']['group']
-gid = node['tomcat']['gid']
+
+user = node.tomcat.user
+uid = node.tomcat.uid
+group = node.tomcat.group
+gid = node.tomcat.gid
+
 archiveFile= installDir+"/apache-tomcat.tar.gz"
-directoryName= "apache-tomcat-" + version
+directoryName= "apache-tomcat-" + node.tomcat.version
 absoluteDestinationPath= installDir + "/" + directoryName
 
 
@@ -31,8 +33,8 @@ end
 
 #Download et installation de tomcat
 remote_file "#{archiveFile}" do
-  source node['tomcat']['tc7_download_url']
-  checksum node['tomcat']['tc7checksum']
+  source node.tomcat.tc7_download_url
+  checksum node.tomcat.tc7_checksum
   not_if "test -d #{absoluteDestinationPath} && test -d #{node.tomcat.catalinaHome}"
 end
 
@@ -50,7 +52,7 @@ bash "untarTomcat" do
 end
 
 #installation de CATALINA_BASE
-["#{catalinaBase}","#{catalinaBase}/conf/Catalina/localhost","#{catalinaBase}/logs", "#{catalinaBase}/temp", "#{catalinaBase}/work", "#{catalinaBase}/webapp"].each do |dir|
+["#{catalinaBase}","#{catalinaBase}/conf","#{catalinaBase}/conf/Catalina","#{catalinaBase}/conf/Catalina/localhost","#{catalinaBase}/logs", "#{catalinaBase}/temp", "#{catalinaBase}/work", "#{catalinaBase}/webapp"].each do |dir|
   directory dir do
     owner "#{user}"
     group "#{group}"
@@ -71,13 +73,29 @@ template "#{configFile}" do
 	})
 end
 
-execute "copyTomcatConf" do
-	user "#{user}"
-	group "#{group}"	  
-	command "cp -R #{absoluteDestinationPath}/conf #{catalinaBase}"
+bash "copyTomcatConf" do
+  code <<-EOH
+	cp -R #{absoluteDestinationPath}/conf #{catalinaBase}
+	chmod a+x #{absoluteDestinationPath}/conf
+	chmod -R a+w #{absoluteDestinationPath}/conf
+  EOH
 end
 
+#tomcat user
+cookbook_file "#{catalinaBase}/conf/tomcat-users.xml" do
+  source "tomcat-users.xml"
+  mode "0655"
+  owner "#{user}"
+  group "#{group}"	 
+end
 
+# Ajout de la webapp manager
+cookbook_file "#{catalinaBase}/conf/Catalina/localhost/manager.xml" do
+  source "manager.xml"
+  mode "0655"
+  owner "#{user}"
+  group "#{group}"	 
+end
 
 #Script de démarrage
 template "/etc/init.d/tomcat" do
@@ -88,24 +106,8 @@ template "/etc/init.d/tomcat" do
 	)
 end
 
+
 service "tomcat" do
   supports :restart => true, :start => true, :stop => true, :reload => true
   action [ :enable]
-end
-
-
-#tomcat user
-cookbook_file "#{catalinaBase}/conf/tomcat-users.xml" do
-  source "tomcat-users.xml"
-  mode "0644"
-  owner "#{user}"
-  group "#{group}"	 
-end
-
-# Ajout de la webapp manager
-cookbook_file "#{catalinaBase}/conf/Catalina/localhost/manager.xml" do
-	source "manager.xml"
-	mode "0655"
-	owner "#{user}"
-        group "#{group}"	 
 end
