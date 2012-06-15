@@ -78,6 +78,7 @@ bash "copyTomcatConf" do
 	cp -R #{absoluteDestinationPath}/conf #{catalinaBase}
 	chmod a+x #{absoluteDestinationPath}/conf
 	chmod -R a+w #{absoluteDestinationPath}/conf
+	chown -R #{user}:#{group} #{catalinaBase}
   EOH
 end
 
