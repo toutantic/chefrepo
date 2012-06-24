@@ -1,4 +1,4 @@
-{ "recipes": [	"google-chrome", "java"],
+{ "recipes": [	"toutantic","google-chrome", "java"],
 "java" : { "install_flavor": "oracle",
 	   "jdk_version" : "7",
 	   "jdk" : { "7" : { "x86_64" : { "url" : "http://dl.dropbox.com/u/24652695/jdk-7u4-linux-x64.tar.gz"}}}
