@@ -1,10 +1,21 @@
 #!/bin/bash
 
-wget -c http://eclipse.ialto.com/technology/epp/downloads/release/indigo/SR2/eclipse-jee-indigo-SR2-linux-gtk-x86_64.tar.gz
+#indigo JEE 64bits
+#VERSION=3.7.2
+#FILE_NAME=eclipse-jee-indigo-SR2-linux-gtk-x86_64.tar.gz
+#URL=http://eclipse.ialto.com/technology/epp/downloads/release/indigo/SR2/$FILE_NAME
 
-tar -xzf eclipse-jee-indigo-SR2-linux-gtk-x86_64.tar.gz
+#juno Java 64bits
+VERSION=4.2
+FILE_NAME=eclipse-java-juno-linux-gtk-x86_64.tar.gz
+URL=http://eclipse.ialto.com/technology/epp/downloads/release/juno/R/$FILE_NAME
 
-mv eclipse ~/local/eclipse-3.7.2
+wget -c $URL
+
+tar -xzf $FILE_NAME
+
+mv eclipse ~/local/eclipse-$VERSION
 
 cd ~/local
-ln -s eclipse-3.7.2 eclipse
+rm eclipse
+ln -s eclipse-$VERSION eclipse
